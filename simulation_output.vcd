@@ -1,0 +1,113 @@
+$date
+	Mon Nov 25 00:20:16 2024
+$end
+$version
+	Icarus Verilog
+$end
+$timescale
+	1s
+$end
+$scope module tb_sector_mapped_cache $end
+$var wire 1 ! hit $end
+$var wire 32 " data_out [31:0] $end
+$var reg 32 # address [31:0] $end
+$var reg 1 $ clk $end
+$var reg 32 % data_in [31:0] $end
+$var reg 1 & read $end
+$var reg 1 ' reset $end
+$var reg 1 ( write $end
+$scope module uut $end
+$var wire 32 ) address [31:0] $end
+$var wire 1 $ clk $end
+$var wire 32 * data_in [31:0] $end
+$var wire 1 & read $end
+$var wire 1 ' reset $end
+$var wire 1 ( write $end
+$var wire 32 + tag [31:0] $end
+$var wire 10 , index [9:0] $end
+$var wire 4 - block_offset [3:0] $end
+$var reg 32 . data_out [31:0] $end
+$var reg 1 ! hit $end
+$var reg 128 / valid_bits [127:0] $end
+$var integer 32 0 i [31:0] $end
+$upscope $end
+$upscope $end
+$enddefinitions $end
+#0
+$dumpvars
+b10000000 0
+b0 /
+b0 .
+b0 -
+b0 ,
+b0 +
+b0 *
+b0 )
+0(
+1'
+0&
+b0 %
+0$
+b0 #
+b0 "
+0!
+$end
+#5
+b10000000 0
+1$
+#10
+0$
+0'
+#15
+1$
+#20
+b10000 ,
+0$
+1(
+b11011110101011011011111011101111 %
+b11011110101011011011111011101111 *
+b10000 #
+b10000 )
+#25
+1!
+b10000000000000000 /
+1$
+#30
+0$
+0(
+#35
+1$
+#40
+0$
+1&
+#45
+b11011110101011011011111011101111 "
+b11011110101011011011111011101111 .
+1$
+#50
+0$
+0&
+#55
+1$
+#60
+b100000 ,
+0$
+1&
+b100000 #
+b100000 )
+#65
+b0 "
+b0 .
+0!
+1$
+#70
+0$
+0&
+#75
+1$
+#80
+0$
+#85
+1$
+#90
+0$
