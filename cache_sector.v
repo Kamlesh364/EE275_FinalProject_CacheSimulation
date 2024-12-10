@@ -1,7 +1,7 @@
-`define cache_size (1024*8)
-`define line_size 32
-`define Associativity 4
-`define sector_size 64 // new definition for sector size
+`define cache_size (1024*128)
+`define line_size 16
+`define Associativity 32
+`define sector_size 512 // new definition for sector size
 
 `define Index_bit (`Associativity==0)? 0: $clog2(`cache_size/(`line_size*`Associativity))
 `define Offset_bit $clog2(`line_size)
