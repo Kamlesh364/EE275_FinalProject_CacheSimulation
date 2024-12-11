@@ -1,7 +1,7 @@
 `define cache_size (1024*128)
 `define line_size 16
 `define Associativity 32
-`define sector_size 512 // new definition for sector size
+`define sector_size 16 // new definition for sector size
 
 `define Index_bit (`Associativity==0)? 0: $clog2(`cache_size/(`line_size*`Associativity))
 `define Offset_bit $clog2(`line_size)
@@ -45,6 +45,14 @@ module test(adder_41,clk_41, rst_41,misses_41,hits_41);
    misses_41 = 0;
    Num_Blocks_41 = CS/LS;
    Num_Sets_41 = Num_Blocks_41/Assoc;
+
+
+   if (SS > LS)
+    begin
+          $error("Sector size (%d) cannot exceed block size (%d).", SS, LS);
+          $finish;
+    end
+
     
    for (k = 0; k <  Num_Blocks_41 ; k = k + 1)
 		begin
