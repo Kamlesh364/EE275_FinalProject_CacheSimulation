@@ -46,10 +46,16 @@ module configurable_cache #(
     assign tag_bits = TAG_BITS;
 
     // Address parsing
-    assign addr_tag = addr[`ADDR_WIDTH-1:`ADDR_WIDTH-TAG_BITS];
-    assign set_index = addr[`ADDR_WIDTH-TAG_BITS-1:`ADDR_WIDTH-TAG_BITS-SET_BITS];
-    assign sector_index = addr[SECTOR_INDEX_BITS+OFFSET_BITS-1:OFFSET_BITS];
-    assign offset = addr[OFFSET_BITS-1:0];
+    
+    // assign addr_tag = addr[`ADDR_WIDTH-1:`ADDR_WIDTH-TAG_BITS];
+    // assign set_index = addr[`ADDR_WIDTH-TAG_BITS-1:`ADDR_WIDTH-TAG_BITS-SET_BITS];
+    // assign sector_index = addr[SECTOR_INDEX_BITS+OFFSET_BITS-1:OFFSET_BITS];
+    // assign offset = addr[OFFSET_BITS-1:0];
+    assign addr_tag = addr[`ADDR_WIDTH-1:`ADDR_WIDTH-TAG_BITS]; // Correct
+    assign set_index = addr[`ADDR_WIDTH-TAG_BITS-1:`ADDR_WIDTH-TAG_BITS-SET_BITS]; // Correct
+    assign sector_index = addr[OFFSET_BITS-1:0]; // No need for SECTOR_INDEX_BITS if it is 0
+    assign offset = addr[OFFSET_BITS-1:0]; // Correct offset calculation
+
 
     // Internal signals
     reg [31:0] current_set_base;
