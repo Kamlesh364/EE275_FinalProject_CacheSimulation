@@ -1,121 +1,158 @@
-// cache_tb.v
-module cache_tb;
+module tb();
+    // Cache configuration parameters
+    parameter CACHE_SIZE = (1024*8);     // in KB 
+    parameter LINE_SIZE = 32;            // in B per line
+    parameter ASSOCIATIVITY = 16;        // m-way set associative
+    
     // Test parameters
-    localparam TRACE_LENGTH = 1500000;
-    localparam CACHE_SIZE = 1024*8;    // 8KB cache
-    localparam LINE_SIZE = 32;         // 32 bytes per line
-    localparam ASSOCIATIVITY = 4;      // 4-way set associative
-    localparam ADDR_WIDTH = 32;
-
-    reg clk, rst, rd_en;
-    reg [ADDR_WIDTH-1:0] addr;
-    wire [31:0] misses, hits;
-    wire hit_flag;
+    `define LENGTH 1500000
     
-    real hit_ratio;
-    integer trace_file, scan_file, done_reading;
-    integer i;
+    // Testbench signals
+    reg clk, rst;
+    reg [31:0] addr;
+    wire hit, miss;
+    wire [31:0] total_hits, total_misses;
+    wire [31:0] num_sets, tag_bits;
     
-    reg [31:0] trace_data [0:TRACE_LENGTH-1];
-    reg [31:0] curr_addr;
+    // Performance metrics
+    real hit_ratio, percentage;
+    real miss_count, hit_count;
     
-    // DUT instantiation
-    cache_controller #(
+    // Trace file handling
+    integer file, stat, i, j;
+    reg signed [31:0] trace_delta[0:`LENGTH-1];
+    reg [31:0] trace_addr[0:`LENGTH-1];
+    
+    // Performance statistics
+    reg [31:0] accesses_per_set[0:(CACHE_SIZE/(LINE_SIZE*ASSOCIATIVITY))-1];
+    
+    // Instantiate cache
+    configurable_cache #(
         .CACHE_SIZE(CACHE_SIZE),
         .LINE_SIZE(LINE_SIZE),
-        .ASSOCIATIVITY(ASSOCIATIVITY),
-        .ADDR_WIDTH(ADDR_WIDTH)
-    ) dut (
+        .ASSOCIATIVITY(ASSOCIATIVITY)
+    ) cache_inst (
         .clk(clk),
         .rst(rst),
         .addr(addr),
-        .rd_en(rd_en),
-        .misses(misses),
-        .hits(hits),
-        .hit_flag(hit_flag)
+        .hit(hit),
+        .miss(miss),
+        .total_hits(total_hits),
+        .total_misses(total_misses),
+        .num_sets(num_sets),
+        .tag_bits(tag_bits)
     );
 
-    // Clock generation
+    // Initialize performance counters
     initial begin
-        clk = 0;
-        forever #5 clk = ~clk;
+        percentage = 100.00;
+        for (i = 0; i < CACHE_SIZE/(LINE_SIZE*ASSOCIATIVITY); i = i + 1)
+            accesses_per_set[i] = 0;
     end
 
-    // Test stimulus
+    // Read trace file
     initial begin
-        // Initialize signals
-        rst = 1;
-        rd_en = 0;
-        addr = 0;
-        curr_addr = 0;
-        
-        // Read trace file
-        trace_file = $fopen("addr_trace.txt", "r");
-        if (trace_file == 0) begin
-            $display("Error: Failed to open trace file");
+        file = $fopen("addr_trace.txt", "r");
+        if (file == 0) begin
+            $display("Error: Could not open trace file");
             $finish;
         end
-
-        // Read addresses from trace file
-        done_reading = 0;
-        for (i = 0; i < TRACE_LENGTH && !done_reading; i = i + 1) begin
-            scan_file = $fscanf(trace_file, "%d\n", trace_data[i]);
-            if (scan_file == -1) begin
-                done_reading = 1;
-            end
+        
+        i = 0;
+        while (!$feof(file) && i < `LENGTH) begin
+            stat = $fscanf(file, "%d\n", trace_delta[i]);
+            if (stat == 1) i = i + 1;
         end
-        $fclose(trace_file);
+        $fclose(file);
+        
+        // Convert deltas to absolute addresses
+        trace_addr[0] = trace_delta[0];
+        for (i = 1; i < `LENGTH; i = i + 1) begin
+            trace_addr[i] = trace_addr[i-1] + trace_delta[i];
+        end
+    end
 
+    // Clock generation
+    always #5 clk = ~clk;
+
+    // Main test sequence
+    initial begin
+        // Initialize
+        clk = 0;
+        rst = 1;
+        addr = 0;
+        
+        // Print configuration
+        $display("\nCache Configuration:");
+        $display("Cache Size: %0d bytes", CACHE_SIZE);
+        $display("Line Size: %0d bytes", LINE_SIZE);
+        $display("Associativity: %0d-way", ASSOCIATIVITY);
+        
         // Reset sequence
-        #100;
+        @(posedge clk);
         rst = 0;
-        rd_en = 1;
-
+        
         // Process trace
-        for (i = 0; i < TRACE_LENGTH; i = i + 1) begin
+        for (j = 0; j < `LENGTH; j = j + 1) begin
             @(posedge clk);
-            if (i == 0) begin
-                curr_addr = trace_data[0];
+            addr = trace_addr[j];
+            
+            // Collect per-set statistics
+            if (hit) begin
+                accesses_per_set[addr[($clog2(CACHE_SIZE/(LINE_SIZE*ASSOCIATIVITY))+$clog2(LINE_SIZE)-1):$clog2(LINE_SIZE)]] = 
+                    accesses_per_set[addr[($clog2(CACHE_SIZE/(LINE_SIZE*ASSOCIATIVITY))+$clog2(LINE_SIZE)-1):$clog2(LINE_SIZE)]] + 1;
             end
-            else begin
-                curr_addr = curr_addr + trace_data[i];
-            end
-            addr = curr_addr;
         end
-
-        // Wait for final operations to complete
-        repeat(10) @(posedge clk);
-        rd_en = 0;
-
-        // Calculate and display results
-        hit_ratio = (hits * 100.0) / (hits + misses);
         
-        $display("\n=== Cache Performance Statistics ===");
-        $display("Configuration:");
-        $display("  Cache Size: %0d bytes", CACHE_SIZE);
-        $display("  Line Size: %0d bytes", LINE_SIZE);
-        $display("  Associativity: %0d-way", ASSOCIATIVITY);
-        $display("\nResults:");
-        $display("  Total Hits: %0d", hits);
-        $display("  Total Misses: %0d", misses);
-        $display("  Total Accesses: %0d", hits + misses);
-        $display("  Hit Ratio: %0.2f%%", hit_ratio);
-        $display("===============================\n");
+        // Calculate final statistics
+        @(posedge clk);
+        miss_count = total_misses;
+        hit_count = total_hits;
+        hit_ratio = (hit_count/(miss_count + hit_count)) * percentage;
+        
+        // Print results
+        $display("\nPerformance Results:");
+        $display("Hit Ratio: %7.2f%%", hit_ratio);
+        $display("Cache Hits: %0d", total_hits);
+        $display("Cache Misses: %0d", total_misses);
+        $display("Total Accesses: %0d", total_hits + total_misses);
+        
+        // Print set utilization
+        $display("\nSet Utilization:");
+        for (i = 0; i < CACHE_SIZE/(LINE_SIZE*ASSOCIATIVITY); i = i + 1) begin
+            if (accesses_per_set[i] > 0)
+                $display("Set %0d: %0d accesses", i, accesses_per_set[i]);
+        end
         
         $finish;
     end
-
-    // Timeout protection
-    initial begin
-        #10000000 // 10ms timeout
-        $display("Simulation timeout!");
-        $finish;
-    end
-
-    // Waveform dumping
-    initial begin
-        $dumpfile("cache_sim.vcd");
-        $dumpvars(0, cache_tb);
+    
+    // Temporal locality tracking
+    integer current_index;
+    reg [31:0] reuse_distance[0:1023];
+    reg [31:0] reuse_count;
+    
+    always @(posedge clk) begin
+        if (!rst && (hit || miss)) begin
+            // Update reuse distance tracking
+            current_index = -1;
+            for (i = 0; i < 1024; i = i + 1) begin
+                if (reuse_distance[i] == addr) begin
+                    current_index = i;
+                    i = 1024; // Exit loop
+                end
+            end
+            
+            if (current_index >= 0) begin
+                reuse_count = reuse_count + 1;
+            end
+            
+            // Shift in new address
+            for (i = 1023; i > 0; i = i - 1) begin
+                reuse_distance[i] = reuse_distance[i-1];
+            end
+            reuse_distance[0] = addr;
+        end
     end
 
 endmodule

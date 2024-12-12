@@ -1,123 +1,140 @@
-// cache_controller.v
-module cache_controller #(
-    parameter CACHE_SIZE = 1024*8,    // 8KB cache
-    parameter LINE_SIZE = 32,         // 32 bytes per line
-    parameter ASSOCIATIVITY = 4,      // 4-way set associative
-    parameter ADDR_WIDTH = 32
+// Cache parameters
+`define WORD_SIZE 32
+`define ADDR_WIDTH 32
+
+module configurable_cache #(
+    parameter CACHE_SIZE = 8192,    // Cache size in bytes
+    parameter LINE_SIZE = 32,       // Cache line size in bytes
+    parameter ASSOCIATIVITY = 4,    // Set associativity
+    
+    // Derived parameters
+    parameter NUM_LINES = CACHE_SIZE/LINE_SIZE,
+    parameter NUM_SETS = NUM_LINES/ASSOCIATIVITY,
+    parameter OFFSET_BITS = $clog2(LINE_SIZE),
+    parameter SET_BITS = $clog2(NUM_SETS),
+    parameter TAG_BITS = `ADDR_WIDTH - SET_BITS - OFFSET_BITS
 )(
     input wire clk,
     input wire rst,
-    input wire [ADDR_WIDTH-1:0] addr,
-    input wire rd_en,
-    output reg [31:0] misses,
-    output reg [31:0] hits,
-    output reg hit_flag
+    input wire [`ADDR_WIDTH-1:0] addr,
+    output reg hit,
+    output reg miss,
+    output reg [31:0] total_hits,
+    output reg [31:0] total_misses,
+    output wire [31:0] num_sets,
+    output wire [31:0] tag_bits
 );
 
-    // Calculate cache parameters
-    localparam NUM_BLOCKS = CACHE_SIZE/LINE_SIZE;
-    localparam NUM_SETS = (ASSOCIATIVITY == 0) ? 1 : (NUM_BLOCKS/ASSOCIATIVITY);
-    localparam OFFSET_BITS = $clog2(LINE_SIZE);
-    localparam INDEX_BITS = (ASSOCIATIVITY == 0) ? $clog2(CACHE_SIZE/LINE_SIZE) :
-                                                  $clog2(CACHE_SIZE/(LINE_SIZE*ASSOCIATIVITY));
-    localparam TAG_BITS = ADDR_WIDTH - (OFFSET_BITS + INDEX_BITS);
-
-    // Cache storage
-    reg [LINE_SIZE*8-1:0] cache_data [0:NUM_BLOCKS-1];
-    reg [TAG_BITS-1:0] tag_array [0:NUM_BLOCKS-1];
-    reg valid_array [0:NUM_BLOCKS-1];
-    reg [ASSOCIATIVITY-1:0] lru_counter [0:NUM_SETS-1][0:ASSOCIATIVITY-1];
+    // Cache storage structures
+    reg [TAG_BITS-1:0] tag_array [0:NUM_LINES-1];
+    reg valid_array [0:NUM_LINES-1];
+    reg [$clog2(ASSOCIATIVITY)-1:0] lru_counter [0:NUM_LINES-1];
 
     // Address breakdown
-    wire [TAG_BITS-1:0] tag;
-    wire [INDEX_BITS-1:0] index;
+    wire [TAG_BITS-1:0] addr_tag;
+    wire [SET_BITS-1:0] set_index;
     wire [OFFSET_BITS-1:0] offset;
 
-    assign tag = addr[ADDR_WIDTH-1:OFFSET_BITS+INDEX_BITS];
-    assign index = addr[OFFSET_BITS+INDEX_BITS-1:OFFSET_BITS];
+    // Output configuration parameters
+    assign num_sets = NUM_SETS;
+    assign tag_bits = TAG_BITS;
+
+    // Address parsing
+    assign addr_tag = addr[`ADDR_WIDTH-1:`ADDR_WIDTH-TAG_BITS];
+    assign set_index = addr[`ADDR_WIDTH-TAG_BITS-1:`ADDR_WIDTH-TAG_BITS-SET_BITS];
     assign offset = addr[OFFSET_BITS-1:0];
 
-    integer i, j;
-    reg hit_found;
-    reg done;
-    reg [31:0] replace_way;
-    reg [31:0] set_base;
+    // Internal signals
+    reg [31:0] current_set_base;
+    reg found_hit;
+    reg [31:0] hit_way;
+    reg [31:0] lru_way;
+    reg [$clog2(ASSOCIATIVITY)-1:0] min_counter;
 
-    // LRU update task
-    task update_lru;
-        input [31:0] set_idx;
-        input [31:0] way;
-        integer k;
-        begin
-            for (k = 0; k < ASSOCIATIVITY; k = k + 1) begin
-                if (lru_counter[set_idx][k] > lru_counter[set_idx][way]) begin
-                    lru_counter[set_idx][k] = lru_counter[set_idx][k] - 1;
-                end
-            end
-            lru_counter[set_idx][way] = ASSOCIATIVITY - 1;
+    // Initialize cache
+    integer i;
+    initial begin
+        for (i = 0; i < NUM_LINES; i = i + 1) begin
+            valid_array[i] = 0;
+            tag_array[i] = 0;
+            lru_counter[i] = i % ASSOCIATIVITY;
         end
-    endtask
+        total_hits = 0;
+        total_misses = 0;
+    end
 
-    // Find LRU way function
-    function [31:0] find_lru;
-        input [31:0] set_idx;
-        reg found;
-        integer k;
-        begin
-            find_lru = 0;
-            found = 0;
-            for (k = 0; k < ASSOCIATIVITY && !found; k = k + 1) begin
-                if (lru_counter[set_idx][k] == 0) begin
-                    find_lru = k;
-                    found = 1;
-                end
-            end
-        end
-    endfunction
-
-
+    // Main cache logic
     always @(posedge clk or posedge rst) begin
         if (rst) begin
-            hits <= 0;
-            misses <= 0;
-            hit_flag <= 0;
-            
-            for (i = 0; i < NUM_SETS; i = i + 1) begin
-                for (j = 0; j < ASSOCIATIVITY; j = j + 1) begin
-                    valid_array[i*ASSOCIATIVITY + j] <= 0;
-                    tag_array[i*ASSOCIATIVITY + j] <= 0;
-                    lru_counter[i][j] <= j;
+            // Reset logic
+            for (i = 0; i < NUM_LINES; i = i + 1) begin
+                valid_array[i] <= 0;
+                tag_array[i] <= 0;
+                lru_counter[i] <= i % ASSOCIATIVITY;
+            end
+            total_hits <= 0;
+            total_misses <= 0;
+            hit <= 0;
+            miss <= 0;
+        end else begin
+            // Calculate set base address
+            current_set_base = set_index * ASSOCIATIVITY;
+            found_hit = 0;
+            hit <= 0;
+            miss <= 0;
+
+            // Check for hit in the set
+            for (i = 0; i < ASSOCIATIVITY; i = i + 1) begin
+                if (valid_array[current_set_base + i] && 
+                    tag_array[current_set_base + i] == addr_tag) begin
+                    found_hit = 1;
+                    hit_way = i;
                 end
             end
-        end
-        else if (rd_en) begin
-            hit_found = 0;
-            set_base = index * ASSOCIATIVITY;
 
-            // Check for hit
-            done = 0;
-            for (i = 0; i < ASSOCIATIVITY && !done; i = i + 1) begin
-                if (valid_array[set_base + i] && tag_array[set_base + i] == tag) begin
-                    hit_found = 1;
-                    replace_way = i;
-                    done = 1;
+            if (found_hit) begin
+                // Cache hit
+                hit <= 1;
+                total_hits <= total_hits + 1;
+                
+                // Update LRU counters
+                for (i = 0; i < ASSOCIATIVITY; i = i + 1) begin
+                    if (lru_counter[current_set_base + i] > 
+                        lru_counter[current_set_base + hit_way]) begin
+                        lru_counter[current_set_base + i] <= 
+                            lru_counter[current_set_base + i] - 1;
+                    end
                 end
-            end
+                lru_counter[current_set_base + hit_way] <= ASSOCIATIVITY - 1;
+            end else begin
+                // Cache miss
+                miss <= 1;
+                total_misses <= total_misses + 1;
 
-            if (hit_found) begin
-                hits <= hits + 1;
-                hit_flag <= 1;
-                update_lru(index, replace_way);
-            end
-            else begin
-                misses <= misses + 1;
-                hit_flag <= 0;
-                replace_way = find_lru(index);
-                tag_array[set_base + replace_way] <= tag;
-                valid_array[set_base + replace_way] <= 1;
-                update_lru(index, replace_way);
+                // Find LRU way
+                min_counter = ASSOCIATIVITY - 1;
+                lru_way = 0;
+                for (i = 0; i < ASSOCIATIVITY; i = i + 1) begin
+                    if (lru_counter[current_set_base + i] < min_counter) begin
+                        min_counter = lru_counter[current_set_base + i];
+                        lru_way = i;
+                    end
+                end
+
+                // Update cache line
+                valid_array[current_set_base + lru_way] <= 1;
+                tag_array[current_set_base + lru_way] <= addr_tag;
+
+                // Update LRU counters
+                for (i = 0; i < ASSOCIATIVITY; i = i + 1) begin
+                    if (lru_counter[current_set_base + i] > 
+                        lru_counter[current_set_base + lru_way]) begin
+                        lru_counter[current_set_base + i] <= 
+                            lru_counter[current_set_base + i] - 1;
+                    end
+                end
+                lru_counter[current_set_base + lru_way] <= ASSOCIATIVITY - 1;
             end
         end
     end
-
 endmodule
