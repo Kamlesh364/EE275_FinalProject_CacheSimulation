@@ -1,7 +1,7 @@
-`define cache_size (1024*128)
-`define line_size 16
-`define Associativity 32
-`define sector_size 16 // new definition for sector size
+`define cache_size (1024*64)
+`define line_size 32
+`define Associativity 4
+`define sector_size 32 // new definition for sector size
 
 `define Index_bit (`Associativity==0)? 0: $clog2(`cache_size/(`line_size*`Associativity))
 `define Offset_bit $clog2(`line_size)
@@ -95,7 +95,15 @@ module test(adder_41,clk_41, rst_41,misses_41,hits_41);
         if (counter[set_index_41+i]==0)begin
      	 	  tag_array[set_index_41+i] = tag;
       		valid_array [set_index_41+i] = 1;
-          sector_offset[set_index_41+i] = adder_41[(Ob+Ib+SOB-1):(Ob+Ib)]; // store sector offset
+          
+          // Calculate the sector offset only if sector_size > 1
+          if (SS > 1) begin
+            sector_offset[set_index_41+i] = adder_41[(Ob + Ib + SOB - 1):(Ob + Ib)]; // store sector offset
+          end
+          else begin
+            sector_offset[set_index_41+i] = 0; // No sector offset when sector_size = 1
+          end
+          
           Curr_Block_41 = set_index_41+i;
           Curr_Count_41 = 0;
         end
@@ -114,6 +122,4 @@ module test(adder_41,clk_41, rst_41,misses_41,hits_41);
       
   end
         
-      
-
 endmodule
