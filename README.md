@@ -77,7 +77,7 @@ You can configure the following parameters in the Verilog files to experiment wi
   ```
 - **Sector Size** (only for sector-mapped caches):  
   ```verilog
-  `define sector_size 512 // Set sector size to 512 bytes
+  `define sector_size 16 // Set sector size to 16 bytes (always <= line_size)
   ```
 
 ---
