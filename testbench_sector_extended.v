@@ -2,7 +2,7 @@ module tb();
     // Cache configuration parameters
     parameter CACHE_SIZE = (1024*8);     // in KB 
     parameter LINE_SIZE = 32;              // in B per line
-    parameter SECTOR_SIZE = 32;             // in B per sector
+    parameter SECTOR_SIZE = 4;             // in B per sector
     parameter ASSOCIATIVITY = 4;           // m-way set associative
     
     // Test parameters

@@ -1,8 +1,8 @@
 module tb();
     // Cache configuration parameters
-    parameter CACHE_SIZE = (1024*8);     // in KB 
+    parameter CACHE_SIZE = (1024*64);     // in KB 
     parameter LINE_SIZE = 32;            // in B per line
-    parameter ASSOCIATIVITY = 16;        // m-way set associative
+    parameter ASSOCIATIVITY = 4;        // m-way set associative
     
     // Test parameters
     `define LENGTH 1500000
@@ -117,12 +117,12 @@ module tb();
         $display("Cache Misses: %0d", total_misses);
         $display("Total Accesses: %0d", total_hits + total_misses);
         
-        // Print set utilization
-        $display("\nSet Utilization:");
-        for (i = 0; i < CACHE_SIZE/(LINE_SIZE*ASSOCIATIVITY); i = i + 1) begin
-            if (accesses_per_set[i] > 0)
-                $display("Set %0d: %0d accesses", i, accesses_per_set[i]);
-        end
+        // // Print set utilization
+        // $display("\nSet Utilization:");
+        // for (i = 0; i < CACHE_SIZE/(LINE_SIZE*ASSOCIATIVITY); i = i + 1) begin
+        //     if (accesses_per_set[i] > 0)
+        //         $display("Set %0d: %0d accesses", i, accesses_per_set[i]);
+        // end
         
         $finish;
     end
